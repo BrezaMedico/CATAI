@@ -97,10 +97,11 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = R
 }
 
 const GEMINI_MODELS = [
+  'gemini-3.8-flash',
   'gemini-flash-lite-latest',
   'gemini-3.5-flash-lite',
-  'gemini-3.1-flash-lite',
-  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
   'gemini-flash-latest',
 ];
 
@@ -114,6 +115,7 @@ export interface PreparedTurn {
  * - Deduplicates user messages that match the incoming newMessage
  * - Merges consecutive bubbles from the same sender into a single coherent turn
  * - Ensures history ends with 'model' so current 'user' turn alternates cleanly
+ * - Ensures history starts with 'user' for strict multi-turn API compatibility
  */
 export function prepareCleanHistory(
   history: ChatMessage[],
@@ -155,7 +157,14 @@ export function prepareCleanHistory(
   }
 
   // Keep up to last 14 turns (7 back-and-forth pairs) for deep discussion context
-  return merged.slice(-14);
+  const sliced = merged.slice(-14);
+
+  // Ensure history starts with 'user' (required by Gemini & OpenAI multi-turn endpoints)
+  while (sliced.length > 0 && sliced[0].role === 'model') {
+    sliced.shift();
+  }
+
+  return sliced;
 }
 
 /**
@@ -228,7 +237,11 @@ async function callGemini(
 
       const data = await response.json();
       const candidate = data.candidates?.[0];
-      const text = candidate?.content?.parts?.[0]?.text;
+      const parts = (candidate?.content?.parts || []) as Array<{ text?: string; thought?: boolean }>;
+      const textParts = parts
+        .filter((p) => p && typeof p.text === 'string' && !p.thought)
+        .map((p) => p.text);
+      const text = textParts.join('').trim();
 
       if (!text) {
         console.warn(`[Gemini] ${modelName} returned empty candidate, trying next model...`);
@@ -398,6 +411,47 @@ export function getConversationalFallback(
     return empathyReplies[Math.floor(Math.random() * empathyReplies.length)];
   }
 
+  // Questions from user (kenapa, gimana, menurutmu, dll.)
+  if (lower.includes('kenapa') || lower.includes('knpa') || lower.includes('gimana') || lower.includes('gmn') || lower.includes('menurutmu') || lower.includes('apakah')) {
+    const questionReplies = [
+      `Kalau menurut sudut pandangku sih, mending dijalanin santai dulu aja ${name}.|||Kira-kira menurut feeling kamu sendiri gimana tuh?`,
+      `Nah itu dia, emang kadang bikin mikir yaa wkwk.|||Tapi pelan-pelan pasti ada jalan keluarnya kok sans aja [STICKER: thumbsup]`,
+      `Pertanyaan bagus tuh! Kalau aku pribadi sih prefer yang simpel-simpel aja biar ga ribet hehe [STICKER: cute]`,
+      `Hmm gimana yaa, menarik sih pembahasannya!|||Kamu sendiri lebih condong ke arah mana nih?`,
+    ];
+    return questionReplies[Math.floor(Math.random() * questionReplies.length)];
+  }
+
+  // Sleep / night / sleepy
+  if (lower.includes('tidur') || lower.includes('ngantuk') || lower.includes('begadang') || lower.includes('bobok')) {
+    const sleepReplies = [
+      `Udah ngantuk yaa? Istirahat gih ${name}, tidur yang nyenyak yaa [STICKER: sleepy]|||Good night! Besok kita lanjut ngobrol lagi`,
+      `Jangan begadang terus yaa, jaga kesehatan kamu [STICKER: cute]|||Yuk tidur dulu, biar besok seger lagi bangunnya`,
+      `Haha sama nih mataku juga udah mulai 5 watt wkwk [STICKER: sleepy]|||Met bobo yaa ${name}!`,
+    ];
+    return sleepReplies[Math.floor(Math.random() * sleepReplies.length)];
+  }
+
+  // Food / culinary
+  if (lower.includes('makan') || lower.includes('laper') || lower.includes('lapar') || lower.includes('kuliner') || lower.includes('masak')) {
+    const foodReplies = [
+      `Wah pas bgt ngomongin makanan jadi ikutan kepikiran wkwk [STICKER: food]|||Kamu lagi kepengen makan apa nih?`,
+      `Jangan lupa makan yaa ${name}, perut kenyang hati senang hehe [STICKER: cute]|||Lagi makan apa sekarang tuh?`,
+      `Enak bgt kayaknya! Jadi pengen cari camilan juga nih di dapur [STICKER: coffee]`,
+    ];
+    return foodReplies[Math.floor(Math.random() * foodReplies.length)];
+  }
+
+  // Work / Study / Deadline
+  if (lower.includes('kerja') || lower.includes('kantor') || lower.includes('nugas') || lower.includes('tugas') || lower.includes('deadline') || lower.includes('kuliah') || lower.includes('sekolah')) {
+    const workReplies = [
+      `Semangat terus yaa ngerjainnya ${name}! [STICKER: cheer]|||Pelan-pelan yang penting kelar, jangan lupa minum air putih juga`,
+      `Duh emang suka numpuk gitu ya kerjaannya haha|||Tapi aku yakin kamu pasti bisa beresin kok! [STICKER: thumbsup]`,
+      `Fokus dulu beresin, nanti kalau udah kelar kabar-kabari yaa biar bisa santai hehe`,
+    ];
+    return workReplies[Math.floor(Math.random() * workReplies.length)];
+  }
+
   // Jokes / laughs
   if (lower.includes('wkwk') || lower.includes('haha') || lower.includes('hehe') || lower.includes('lucu')) {
     const laughReplies = [
@@ -415,6 +469,8 @@ export function getConversationalFallback(
     `Wah asik bgt tuh! Ceritain lebih banyak dong hehe [STICKER: wave]`,
     `Asik bgt emang ngobrol santai gini sama kamu ${name}, nyambung terus wkwk [STICKER: thumbsup]`,
     `Iyaa nih aku dengerin kook. Santai aja ceritanya, sans aja yaa!`,
+    `Haha seru juga yaa dengerin cerita kamu hari ini [STICKER: cute]|||Terus ada kelanjutan apa lagi nih?`,
+    `Oalah gituu, paham-paham. Pas bgt lagi senggang nih bisa nemenin kamu ngobrol [STICKER: wave]`,
   ];
   return generalReplies[Math.floor(Math.random() * generalReplies.length)];
 }
@@ -435,12 +491,13 @@ export async function sendChatMessageToCompanion(
 ): Promise<string> {
   const systemPrompt = buildSystemPrompt(profile);
 
-  const targets = [
-    { type: 'gemini', key: GEMINI_KEYS[0], id: 'gemini_1', name: 'Gemini Key 1' },
-    { type: 'gemini', key: GEMINI_KEYS[1], id: 'gemini_2', name: 'Gemini Key 2' },
-    { type: 'openai', key: OPENAI_KEYS[0], id: 'openai_1', name: 'OpenAI Key 1' },
-    { type: 'openai', key: OPENAI_KEYS[1], id: 'openai_2', name: 'OpenAI Key 2' },
-  ];
+  const targets: Array<{ type: 'gemini' | 'openai'; key: string; id: string; name: string }> = [];
+  GEMINI_KEYS.forEach((key, i) => {
+    if (key) targets.push({ type: 'gemini', key, id: `gemini_${i + 1}`, name: `Gemini Key ${i + 1}` });
+  });
+  OPENAI_KEYS.forEach((key, i) => {
+    if (key) targets.push({ type: 'openai', key, id: `openai_${i + 1}`, name: `OpenAI Key ${i + 1}` });
+  });
 
   // Iterate in priority order
   for (const target of targets) {
@@ -525,6 +582,9 @@ export function stripAllMediaTags(str: string): string {
     .replace(/[\[\(【]\s*pap\s*[:\s][^\]\)】]*[\]\)】]/gi, '')
     .replace(/[\[\(【]\s*foto\s*[:\s][^\]\)】]*[\]\)】]/gi, '')
     .replace(/[\[\(【]\s*gambar\s*[:\s][^\]\)】]*[\]\)】]/gi, '')
+    .replace(/^#{1,6}\s+/gm, '') // Strip markdown headers
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // Strip markdown bold
+    .replace(/^\s*[-*]\s+/gm, '') // Strip markdown list bullets
     .replace(/\s*\|\|\|\s*/g, '|||')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -666,6 +726,8 @@ export function parseCompanionResponse(
  */
 export function applyNaturalChatQuirks(text: string): string {
   if (!text) return text;
+  // Never distort URLs with conversational typos/quirks
+  if (text.includes('http://') || text.includes('https://')) return text;
 
   const quirks: Array<{ pattern: string; replacements: string[] }> = [
     { pattern: '\\bkenapa\\b', replacements: ['knpa', 'kenapaaa', 'knpaa'] },

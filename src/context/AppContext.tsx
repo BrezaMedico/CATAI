@@ -22,6 +22,7 @@ import {
   sendChatMessageToCompanion,
   generateProactiveMessage,
   parseCompanionResponse,
+  getConversationalFallback,
   CompanionStep,
 } from '../services/aiRouter';
 import { secureStorage } from '../utils/encryption';
@@ -66,7 +67,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? Number(saved) : Date.now() - 8 * 60 * 1000;
   });
   const [typingSpeed, setTypingSpeedState] = useState<TypingSpeedPreference>(() =>
-    secureStorage.getItem('typing_speed_pref', 'realistic')
+    secureStorage.getItem('typing_speed_pref', 'natural')
   );
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
@@ -154,10 +155,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (currentSpeed === 'instant') {
             typingDurationMs = 200;
           } else if (currentSpeed === 'natural') {
-            typingDurationMs = Math.min(Math.max(step.content.length * 100, 1000), 5000);
+            typingDurationMs = Math.min(Math.max(step.content.length * 40, 600), 2500);
           } else {
-            // 'realistic': 0.5 detik per huruf (500ms per character)
-            typingDurationMs = Math.max(step.content.length * 500, 1500);
+            // 'realistic': natural human typing on smartphone (approx 80ms per char, max 4.5s)
+            typingDurationMs = Math.min(Math.max(step.content.length * 80, 1000), 4500);
           }
 
           setIsTyping(true);
@@ -274,91 +275,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    // 1. Calculate unread / seen delay (0 - 5 minutes, mostly 0 - 2 minutes)
-    // If companion is already looking at phone (online), seen delay is brief (800ms - 2500ms)
-    let seenDelayMs = 0;
-    const currentSpeed = typingSpeedRef.current;
-    if (currentSpeed === 'instant') {
-      seenDelayMs = 0;
-    } else if (isCompanionOnline) {
-      seenDelayMs = Math.floor(800 + Math.random() * 1500);
-    } else if (currentSpeed === 'natural') {
-      seenDelayMs = Math.floor(1500 + Math.random() * 3000);
-    } else {
-      const isUnderTwoMin = Math.random() < 0.85; // 85% chance under 2 min
-      if (isUnderTwoMin) {
-        seenDelayMs = Math.floor(4000 + Math.random() * Math.random() * 116000);
-      } else {
-        seenDelayMs = Math.floor(120000 + Math.random() * 180000);
-      }
-    }
+    let batchToProcess: ChatMessage[] = [];
+    let combinedUserText = '';
+    let lastImage: string | undefined;
 
-    if (seenDelayMs > 0 && !isCompanionOnline) {
-      setIsWaitingToRead(true);
-      await new Promise<void>((resolve) => {
-        const timeoutId = window.setTimeout(() => {
-          skipTimerRef.current = null;
-          resolve();
-        }, seenDelayMs);
-        skipTimerRef.current = () => {
-          clearTimeout(timeoutId);
-          resolve();
-        };
-      });
-      setIsWaitingToRead(false);
-    }
-
-    // 2. BATCH READ: Companion opens phone, comes online, records last seen!
-    setIsCompanionOnline(true);
-    updateLastSeen(Date.now());
-
-    const batchToProcess = [...pendingUserMessagesRef.current];
-    pendingUserMessagesRef.current = [];
-
-    // Mark ALL unread user messages as read (Centang 2 ✓✓) SIMULTANEOUSLY!
-    setMessages((prev) =>
-      prev.map((m) => (m.sender === 'user' && m.status !== 'read' ? { ...m, status: 'read' } : m))
-    );
-
-    // Combine all unread user text so companion responds to the whole conversation at once
-    const combinedUserText = batchToProcess
-      .map((m) => m.content)
-      .filter(Boolean)
-      .join('\n');
-    const lastImage = batchToProcess.find((m) => !!m.media_url)?.media_url;
-
-    // Filter out current unread batch from history so the turn is only sent once as newMessage!
-    const historyBeforeBatch = messagesRef.current.filter(
-      (m) => !batchToProcess.some((b) => b.id === m.id)
-    );
-
-    // 3. Request AI reply for entire batch
-    let rawReply = '';
     try {
-      rawReply = await sendChatMessageToCompanion(
-        comp,
-        historyBeforeBatch,
-        combinedUserText || 'Hai!',
-        lastImage
+      // 1. Calculate unread / seen delay (0 - 3 seconds in natural mode)
+      let seenDelayMs = 0;
+      const currentSpeed = typingSpeedRef.current;
+      if (currentSpeed === 'instant') {
+        seenDelayMs = 0;
+      } else if (isCompanionOnline) {
+        seenDelayMs = Math.floor(500 + Math.random() * 1000);
+      } else if (currentSpeed === 'natural') {
+        seenDelayMs = Math.floor(800 + Math.random() * 1600);
+      } else {
+        // 'realistic': 1.8 to 4.5 seconds (natural phone notice delay)
+        seenDelayMs = Math.floor(1800 + Math.random() * 2700);
+      }
+
+      if (seenDelayMs > 0 && !isCompanionOnline) {
+        setIsWaitingToRead(true);
+        await new Promise<void>((resolve) => {
+          const timeoutId = window.setTimeout(() => {
+            skipTimerRef.current = null;
+            resolve();
+          }, seenDelayMs);
+          skipTimerRef.current = () => {
+            clearTimeout(timeoutId);
+            resolve();
+          };
+        });
+        setIsWaitingToRead(false);
+      }
+
+      // 2. BATCH READ: Companion opens phone, comes online, records last seen!
+      setIsCompanionOnline(true);
+      updateLastSeen(Date.now());
+
+      batchToProcess = [...pendingUserMessagesRef.current];
+      pendingUserMessagesRef.current = [];
+
+      // Mark ALL unread user messages as read (Centang 2 ✓✓) SIMULTANEOUSLY!
+      setMessages((prev) =>
+        prev.map((m) => (m.sender === 'user' && m.status !== 'read' ? { ...m, status: 'read' } : m))
       );
+
+      // Combine all unread user text so companion responds to the whole conversation at once
+      combinedUserText = batchToProcess
+        .map((m) => m.content)
+        .filter(Boolean)
+        .join('\n');
+      lastImage = batchToProcess.find((m) => !!m.media_url)?.media_url;
+
+      // Filter out current unread batch from history so the turn is only sent once as newMessage!
+      const historyBeforeBatch = messagesRef.current.filter(
+        (m) => !batchToProcess.some((b) => b.id === m.id)
+      );
+
+      // 3. Request AI reply for entire batch
+      let rawReply = '';
+      try {
+        rawReply = await sendChatMessageToCompanion(
+          comp,
+          historyBeforeBatch,
+          combinedUserText || 'Hai!',
+          lastImage
+        );
+      } catch (err) {
+        console.warn('Companion brain error, using conversational fallback:', err);
+        rawReply = getConversationalFallback(comp, combinedUserText, historyBeforeBatch, !!lastImage);
+      }
+
+      // 4. Parse steps (multi-bubble, cute stickers, faceless PAP)
+      const steps = parseCompanionResponse(rawReply, combinedUserText);
+
+      // 5. Deliver steps sequentially with character typing duration
+      await deliverCompanionSteps(steps, comp, user.id);
     } catch (err) {
-      console.warn('Companion brain error:', err);
-      rawReply = `Eh ${comp.user_nickname}, sinyalku barusan agak lemot nih hehe. Tadi kamu bilang apa ya?`;
-    }
-
-    // 4. Parse steps (multi-bubble, cute stickers, faceless PAP)
-    const steps = parseCompanionResponse(rawReply, combinedUserText);
-
-    // 5. Deliver steps sequentially with character typing duration
-    await deliverCompanionSteps(steps, comp, user.id);
-
-    // If new user messages arrived while companion was typing, process next batch!
-    if (pendingUserMessagesRef.current.length > 0) {
-      await processMessageBatchQueue();
-    } else {
-      isProcessingBatchRef.current = false;
-      // Stays online for 15s after finishing, then goes offline and updates lastSeen
-      setCompanionOnlineBriefly(15000);
+      console.error('Batch processing unexpected error, delivering emergency fallback:', err);
+      try {
+        const fallbackText = getConversationalFallback(comp, combinedUserText || 'Hai!', messagesRef.current, !!lastImage);
+        const fallbackSteps = parseCompanionResponse(fallbackText, combinedUserText);
+        await deliverCompanionSteps(fallbackSteps, comp, user.id);
+      } catch (fallbackErr) {
+        console.error('Emergency fallback delivery failed:', fallbackErr);
+      }
+    } finally {
+      // If new user messages arrived while companion was typing, process next batch!
+      if (pendingUserMessagesRef.current.length > 0) {
+        await processMessageBatchQueue();
+      } else {
+        isProcessingBatchRef.current = false;
+        setIsTyping(false);
+        setIsWaitingToRead(false);
+        // Stays online for 15s after finishing, then goes offline and updates lastSeen
+        setCompanionOnlineBriefly(15000);
+      }
     }
   }, [deliverCompanionSteps, isCompanionOnline, setCompanionOnlineBriefly, updateLastSeen]);
 
