@@ -547,7 +547,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({ isOpen, onClose })
       {/* Fullscreen Photo Lightbox from Media Gallery */}
       {selectedMediaPhoto && (
         <div
-          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-fadeIn"
           onClick={() => setSelectedMediaPhoto(null)}
         >
           <button
@@ -561,7 +561,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({ isOpen, onClose })
           <img
             src={selectedMediaPhoto}
             alt="Media Fullscreen"
-            className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl border border-[#1E2433]"
+            className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-lg border border-[#1E2433]"
             onClick={(e) => e.stopPropagation()}
           />
         </div>

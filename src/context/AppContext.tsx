@@ -16,6 +16,7 @@ import {
   getChatMessages,
   saveChatMessage,
   clearChatHistory,
+  generateUuid,
 } from '../services/supabase';
 import {
   sendChatMessageToCompanion,
@@ -173,7 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsTyping(false);
 
           const textMsg: ChatMessage = {
-            id: `msg_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
+            id: generateUuid(),
             user_id: userId,
             sender: 'companion',
             content: step.content,
@@ -183,7 +184,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
 
           await saveChatMessage(textMsg);
-          setMessages((prev) => [...prev, textMsg]);
+          setMessages((prev) => (prev.some((m) => m.id === textMsg.id) ? prev : [...prev, textMsg]));
 
           // Pause between bubbles
           if (idx < steps.length - 1) {
@@ -204,7 +205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsTyping(false);
 
           const imgMsg: ChatMessage = {
-            id: `msg_${Date.now()}_${idx}_pap`,
+            id: generateUuid(),
             user_id: userId,
             sender: 'companion',
             content: step.content || '',
@@ -215,7 +216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
 
           await saveChatMessage(imgMsg);
-          setMessages((prev) => [...prev, imgMsg]);
+          setMessages((prev) => (prev.some((m) => m.id === imgMsg.id) ? prev : [...prev, imgMsg]));
 
           if (idx < steps.length - 1) {
             await new Promise((r) => setTimeout(r, 1000));
@@ -224,7 +225,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await new Promise((r) => setTimeout(r, 800));
 
           const stkMsg: ChatMessage = {
-            id: `msg_${Date.now()}_${idx}_stk`,
+            id: generateUuid(),
             user_id: userId,
             sender: 'companion',
             content: '',
@@ -235,7 +236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
 
           await saveChatMessage(stkMsg);
-          setMessages((prev) => [...prev, stkMsg]);
+          setMessages((prev) => (prev.some((m) => m.id === stkMsg.id) ? prev : [...prev, stkMsg]));
 
           if (idx < steps.length - 1) {
             await new Promise((r) => setTimeout(r, 800));
@@ -516,7 +517,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const initialStatus: 'sent' | 'read' = isActivelyLooking ? 'read' : 'sent';
 
     const userMsg: ChatMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: generateUuid(),
       user_id: currentUser.id,
       sender: 'user',
       content: text.trim(),
@@ -530,12 +531,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateLastSeen(Date.now());
       setIsCompanionOnline(true);
       // Mark all past user messages as read simultaneously
-      setMessages((prev) => [
-        ...prev.map((m) => (m.sender === 'user' && m.status !== 'read' ? { ...m, status: 'read' as const } : m)),
-        userMsg,
-      ]);
+      setMessages((prev) => {
+        const updated = prev.map((m) =>
+          m.sender === 'user' && m.status !== 'read' ? { ...m, status: 'read' as const } : m
+        );
+        return updated.some((m) => m.id === userMsg.id) ? updated : [...updated, userMsg];
+      });
     } else {
-      setMessages((prev) => [...prev, userMsg]);
+      setMessages((prev) => (prev.some((m) => m.id === userMsg.id) ? prev : [...prev, userMsg]));
     }
 
     await saveChatMessage(userMsg);

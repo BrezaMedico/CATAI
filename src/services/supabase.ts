@@ -39,6 +39,17 @@ export function deterministicUuid(seed: string): string {
   return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-4${hash.substring(13, 16)}-a${hash.substring(17, 20)}-${hash.substring(20, 32)}`;
 }
 
+export function generateUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Hybrid Sign Up
  */
@@ -291,24 +302,64 @@ export async function getChatMessages(userId: string): Promise<ChatMessage[]> {
       .order('created_at', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      const decryptedList: ChatMessage[] = data.map((item) => ({
-        id: item.id,
-        user_id: item.user_id,
-        sender: item.sender as 'user' | 'companion',
-        content: decryptText(item.content),
-        media_url: item.media_url ? decryptText(item.media_url) : undefined,
-        created_at: item.created_at,
-      }));
+      const decryptedList: ChatMessage[] = data.map((item) => {
+        const rawMedia = item.media_url ? decryptText(item.media_url) : undefined;
+        let sticker_url: string | undefined = undefined;
+        let media_url: string | undefined = undefined;
+        let message_type: 'text' | 'sticker' | 'image' = 'text';
+
+        if (rawMedia) {
+          if (rawMedia.startsWith('sticker:')) {
+            message_type = 'sticker';
+            sticker_url = rawMedia.slice(8);
+          } else {
+            message_type = 'image';
+            media_url = rawMedia;
+          }
+        }
+
+        return {
+          id: item.id,
+          user_id: item.user_id,
+          sender: item.sender as 'user' | 'companion',
+          content: decryptText(item.content),
+          media_url,
+          sticker_url,
+          message_type,
+          status: 'read' as const,
+          created_at: item.created_at,
+        };
+      });
+
+      // Deduplicate by message ID
+      const seenIds = new Set<string>();
+      const deduped: ChatMessage[] = [];
+      for (const msg of decryptedList) {
+        if (!seenIds.has(msg.id)) {
+          seenIds.add(msg.id);
+          deduped.push(msg);
+        }
+      }
 
       // Cache to local storage
-      secureStorage.setItem(localKey, decryptedList);
-      return decryptedList;
+      secureStorage.setItem(localKey, deduped);
+      return deduped;
     }
   } catch (err) {
     console.warn('Fetch messages from Supabase failed, using local messages:', err);
   }
 
-  return localMessages;
+  // Deduplicate local messages
+  const seenIds = new Set<string>();
+  const dedupedLocal: ChatMessage[] = [];
+  for (const msg of localMessages) {
+    if (!seenIds.has(msg.id)) {
+      seenIds.add(msg.id);
+      dedupedLocal.push(msg);
+    }
+  }
+
+  return dedupedLocal;
 }
 
 /**
@@ -318,16 +369,35 @@ export async function saveChatMessage(message: ChatMessage): Promise<void> {
   const localKey = `${STORAGE_KEYS.MESSAGES_PREFIX}${message.user_id}`;
   const currentMessages = secureStorage.getItem<ChatMessage[]>(localKey, []);
   
-  // Append to local store (stored decrypted in secureStorage object, which handles AES serialization)
-  currentMessages.push(message);
+  // Ensure message has a 36-char UUID
+  if (!message.id || !message.id.includes('-') || message.id.length !== 36) {
+    message.id = generateUuid();
+  }
+
+  // Deduplicate in local store by id
+  const existingIdx = currentMessages.findIndex((m) => m.id === message.id);
+  if (existingIdx >= 0) {
+    currentMessages[existingIdx] = message;
+  } else {
+    currentMessages.push(message);
+  }
   secureStorage.setItem(localKey, currentMessages);
 
   try {
-    const encryptedContent = encryptText(message.content);
-    const encryptedMedia = message.media_url ? encryptText(message.media_url) : null;
+    const encryptedContent = encryptText(message.content || '');
+    
+    // If sticker, encode as sticker:URL so it survives encrypted in media_url column
+    let rawMediaToEncrypt: string | null = null;
+    if (message.message_type === 'sticker' && message.sticker_url) {
+      rawMediaToEncrypt = `sticker:${message.sticker_url}`;
+    } else if (message.media_url) {
+      rawMediaToEncrypt = message.media_url;
+    }
+
+    const encryptedMedia = rawMediaToEncrypt ? encryptText(rawMediaToEncrypt) : null;
 
     await supabase.from('messages').insert({
-      id: message.id.includes('-') && message.id.length === 36 ? message.id : undefined,
+      id: message.id,
       user_id: message.user_id,
       sender: message.sender,
       content: encryptedContent,

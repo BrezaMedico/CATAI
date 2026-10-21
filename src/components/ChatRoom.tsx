@@ -385,7 +385,7 @@ export const ChatRoom: React.FC = () => {
                             loading="lazy"
                           />
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors flex items-center justify-center pointer-events-none">
-                            <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/75 text-white text-[10px] px-2.5 py-1 rounded backdrop-blur-sm font-mono flex items-center gap-1 shadow">
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-[#0B0E17]/90 text-white text-[10px] px-2.5 py-1 rounded font-mono flex items-center gap-1 shadow">
                               🔍 Klik untuk perbesar
                             </span>
                           </div>
@@ -581,7 +581,7 @@ export const ChatRoom: React.FC = () => {
       {/* Fullscreen Photo Lightbox Modal */}
       {viewingPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fadeIn"
+          className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 animate-fadeIn"
           onClick={() => setViewingPhoto(null)}
         >
           {/* Close button */}
@@ -602,7 +602,7 @@ export const ChatRoom: React.FC = () => {
             <img
               src={viewingPhoto.url}
               alt={viewingPhoto.caption || 'Foto Fullscreen'}
-              className="max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-lg shadow-2xl border border-[#1E2433]"
+              className="max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-lg shadow-lg border border-[#1E2433]"
             />
             {viewingPhoto.caption && (
               <p className="mt-3 text-xs sm:text-sm text-zinc-300 text-center max-w-xl font-medium px-4 py-2 bg-[#11151F]/90 rounded-full border border-[#1E2433] shadow">

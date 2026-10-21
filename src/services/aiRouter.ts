@@ -14,7 +14,7 @@ const OPENAI_KEYS = [
 ].filter(Boolean);
 
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown tracker
-const REQUEST_TIMEOUT_MS = 8000; // 8 seconds timeout per attempt
+const REQUEST_TIMEOUT_MS = 12000; // 12 seconds timeout per attempt
 
 // In-memory cooldown tracker: { keyIdentifier: timestampUntil }
 const cooldownMap = new Map<string, number>();
@@ -92,11 +92,66 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = R
 }
 
 const GEMINI_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3-flash-preview',
+  'gemini-flash-lite-latest',
+  'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
-  'gemini-2.5-flash',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
 ];
+
+export interface PreparedTurn {
+  role: 'user' | 'model';
+  text: string;
+}
+
+/**
+ * Prepares a strictly valid, alternating conversation history:
+ * - Deduplicates user messages that match the incoming newMessage
+ * - Merges consecutive bubbles from the same sender into a single coherent turn
+ * - Ensures history ends with 'model' so current 'user' turn alternates cleanly
+ */
+export function prepareCleanHistory(
+  history: ChatMessage[],
+  newMessage: string
+): PreparedTurn[] {
+  const newMsgTrimmed = newMessage.trim().toLowerCase();
+  const relevantHistory: Array<{ role: 'user' | 'model'; text: string }> = [];
+
+  for (const m of history) {
+    const isUser = m.sender === 'user';
+    const text = (m.content || '').trim();
+    // Skip empty companion bubbles (like sticker-only bubbles)
+    if (!text && !m.media_url) continue;
+
+    const role: 'user' | 'model' = isUser ? 'user' : 'model';
+    const cleanText = text || (m.media_url ? '(mengirim foto)' : '');
+
+    // If it's a user message and its text is already in newMessage, skip it to avoid duplicate
+    if (isUser && cleanText && newMsgTrimmed.includes(cleanText.toLowerCase())) {
+      continue;
+    }
+
+    relevantHistory.push({ role, text: cleanText });
+  }
+
+  // Merge consecutive turns with the same role
+  const merged: PreparedTurn[] = [];
+  for (const item of relevantHistory) {
+    if (merged.length > 0 && merged[merged.length - 1].role === item.role) {
+      merged[merged.length - 1].text += '\n' + item.text;
+    } else {
+      merged.push({ role: item.role, text: item.text });
+    }
+  }
+
+  // Ensure history does NOT end with 'user'
+  while (merged.length > 0 && merged[merged.length - 1].role === 'user') {
+    merged.pop();
+  }
+
+  // Keep up to last 6 turns (3 pairs) for rapid response and token efficiency
+  return merged.slice(-6);
+}
 
 /**
  * Attempt call to Gemini REST API across available models
@@ -108,25 +163,13 @@ async function callGemini(
   newMessage: string,
   imageBase64?: string
 ): Promise<string> {
-  // Build contents array with history
   const contents: Array<{ role: 'user' | 'model'; parts: Array<Record<string, unknown>> }> = [];
 
-  // Deduplicate: avoid consecutive identical user turn if already at end of history
-  const cleanHistory = [...history];
-  while (
-    cleanHistory.length > 0 &&
-    cleanHistory[cleanHistory.length - 1].sender === 'user' &&
-    cleanHistory[cleanHistory.length - 1].content?.trim() === newMessage.trim()
-  ) {
-    cleanHistory.pop();
-  }
-
-  // Add recent history (up to last 8 messages)
-  const recentHistory = cleanHistory.slice(-8);
-  for (const msg of recentHistory) {
+  const cleanTurns = prepareCleanHistory(history, newMessage);
+  for (const turn of cleanTurns) {
     contents.push({
-      role: msg.sender === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content || '(mengirim gambar)' }],
+      role: turn.role,
+      parts: [{ text: turn.text }],
     });
   }
 
@@ -173,13 +216,9 @@ async function callGemini(
 
       if (!response.ok) {
         const errorText = await response.text();
-        // If 404 (retired model) or 503 (temporary spike), continue to next model
-        if (response.status === 404 || response.status === 503) {
-          console.warn(`[Gemini] ${modelName} returned HTTP ${response.status}, trying next model...`);
-          lastError = new Error(`Gemini ${modelName} HTTP ${response.status}: ${errorText}`);
-          continue;
-        }
-        throw new Error(`Gemini HTTP ${response.status}: ${errorText}`);
+        console.warn(`[Gemini] ${modelName} returned HTTP ${response.status}: ${errorText.slice(0, 100)}, trying next model...`);
+        lastError = new Error(`Gemini ${modelName} HTTP ${response.status}: ${errorText}`);
+        continue;
       }
 
       const data = await response.json();
@@ -187,13 +226,14 @@ async function callGemini(
       const text = candidate?.content?.parts?.[0]?.text;
 
       if (!text) {
-        throw new Error(`Gemini ${modelName} returned empty candidate`);
+        console.warn(`[Gemini] ${modelName} returned empty candidate, trying next model...`);
+        lastError = new Error(`Gemini ${modelName} returned empty candidate`);
+        continue;
       }
 
       return text.trim();
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      // If network timeout or fetch error on this model, try next model
       console.warn(`[Gemini] Error calling ${modelName}:`, lastError.message);
     }
   }
@@ -216,22 +256,11 @@ async function callOpenAI(
     content: string | Array<Record<string, unknown>>;
   }> = [{ role: 'system', content: systemPrompt }];
 
-  // Deduplicate: avoid consecutive identical user turn if already at end of history
-  const cleanHistory = [...history];
-  while (
-    cleanHistory.length > 0 &&
-    cleanHistory[cleanHistory.length - 1].sender === 'user' &&
-    cleanHistory[cleanHistory.length - 1].content?.trim() === newMessage.trim()
-  ) {
-    cleanHistory.pop();
-  }
-
-  // Add recent history
-  const recentHistory = cleanHistory.slice(-8);
-  for (const msg of recentHistory) {
+  const cleanTurns = prepareCleanHistory(history, newMessage);
+  for (const turn of cleanTurns) {
     messages.push({
-      role: msg.sender === 'user' ? 'user' : 'assistant',
-      content: msg.content || '(mengirim gambar)',
+      role: turn.role === 'user' ? 'user' : 'assistant',
+      content: turn.text,
     });
   }
 
@@ -483,6 +512,7 @@ export function stripAllMediaTags(str: string): string {
     .replace(/[\[\(【]\s*pap\s*[:\s][^\]\)】]*[\]\)】]/gi, '')
     .replace(/[\[\(【]\s*foto\s*[:\s][^\]\)】]*[\]\)】]/gi, '')
     .replace(/[\[\(【]\s*gambar\s*[:\s][^\]\)】]*[\]\)】]/gi, '')
+    .replace(/\s*\|\|\|\s*/g, '|||')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -494,7 +524,7 @@ export function parseCompanionResponse(
   rawText: string,
   userMessageContext = ''
 ): CompanionStep[] {
-  let text = rawText || '';
+  const text = rawText || '';
   const steps: CompanionStep[] = [];
 
   // 1. Extract PAP Tag if present
@@ -503,15 +533,19 @@ export function parseCompanionResponse(
   if (papMatch) {
     papPhoto = getPapPhotoByCategory(papMatch[1]);
   } else {
-    // Check if user asked for PAP or asked "lagi apa"
-    const lowerUser = userMessageContext.toLowerCase();
-    if (
-      lowerUser.includes('pap') ||
-      lowerUser.includes('lagi apa') ||
-      lowerUser.includes('lagi ngapain') ||
-      lowerUser.includes('foto')
-    ) {
-      papPhoto = detectPapCategory(userMessageContext) || detectPapCategory(text);
+    // ONLY attach PAP photo if the user EXPLICITLY asked for a photo/PAP
+    const lowerUser = (userMessageContext || '').toLowerCase();
+    const isExplicitPhotoRequest =
+      lowerUser.includes('minta pap') ||
+      lowerUser.includes('kirim pap') ||
+      lowerUser.includes('bagi pap') ||
+      lowerUser.includes('pap dong') ||
+      lowerUser.includes('minta foto') ||
+      lowerUser.includes('kirim foto') ||
+      lowerUser.includes('lihat foto');
+
+    if (isExplicitPhotoRequest) {
+      papPhoto = detectPapCategory(text) || detectPapCategory(userMessageContext) || getPapPhotoByCategory('relax');
     }
   }
 
@@ -520,16 +554,14 @@ export function parseCompanionResponse(
   const stickerMatch = text.match(/[\[\(【]\s*sticker\s*[:\s]\s*([a-zA-Z0-9_-]+)\s*[\]\)】]/i);
   if (stickerMatch) {
     sticker = getStickerByCategory(stickerMatch[1]);
-  } else {
-    // Contextual auto-sticker detection: companion frequently sends stickers (as requested)
+  } else if (!papPhoto) {
+    // Contextual auto-sticker only if no PAP photo attached (avoids spammy bubbles)
     const detected = detectStickerCategory(text);
     if (detected) {
-      // 75% chance to send sticker if emotional trigger found
-      if (Math.random() < 0.75) {
+      if (Math.random() < 0.6) {
         sticker = detected;
       }
-    } else if (Math.random() < 0.3) {
-      // 30% random cute sticker
+    } else if (Math.random() < 0.25) {
       sticker = getStickerByCategory('cute');
     }
   }
@@ -555,16 +587,16 @@ export function parseCompanionResponse(
       : [{ type: 'text', content: 'Hehe iyaaa nih, gimana harimu?' }];
   }
 
-  // Place PAP photo naturally right after bubble 1 if multi-bubble, or after the bubble
+  // If text bubbles exist alongside PAP, leave content empty on image so it doesn't duplicate the text bubble!
   if (papPhoto && rawBubbles.length > 1) {
     steps.push({ type: 'text', content: rawBubbles[0] });
-    steps.push({ type: 'image', mediaUrl: papPhoto.url, content: papPhoto.caption });
+    steps.push({ type: 'image', mediaUrl: papPhoto.url, content: '' });
     for (let i = 1; i < rawBubbles.length; i++) {
       steps.push({ type: 'text', content: rawBubbles[i] });
     }
   } else if (papPhoto) {
     steps.push({ type: 'text', content: rawBubbles[0] });
-    steps.push({ type: 'image', mediaUrl: papPhoto.url, content: papPhoto.caption });
+    steps.push({ type: 'image', mediaUrl: papPhoto.url, content: '' });
   } else {
     for (const b of rawBubbles) {
       steps.push({ type: 'text', content: b });
@@ -586,33 +618,32 @@ export function parseCompanionResponse(
 export function applyNaturalChatQuirks(text: string): string {
   if (!text) return text;
 
-  const quirks: Array<{ regex: RegExp; replacements: string[] }> = [
-    { regex: /\bkenapa\b/gi, replacements: ['knpa', 'kenapaaa', 'knpaa'] },
-    { regex: /\bgitu\b/gi, replacements: ['gtu', 'gituuu'] },
-    { regex: /\bgapapa\b/gi, replacements: ['gapapaaa', 'gpp', 'gapapaa'] },
-    { regex: /\bbanget\b/gi, replacements: ['bgt', 'bangettt', 'bgt deh'] },
-    { regex: /\biya\b/gi, replacements: ['iyaaa', 'iyaa'] },
-    { regex: /\bhalo\b/gi, replacements: ['halooo', 'haloo'] },
-    { regex: /\bseru\b/gi, replacements: ['seruuu', 'seruu'] },
-    { regex: /\blucu\b/gi, replacements: ['lucuuu', 'lucuu'] },
-    { regex: /\bcapek\b/gi, replacements: ['capekk', 'capekkk'] },
-    { regex: /\bkamu\b/gi, replacements: ['kmu', 'kamuu'] },
-    { regex: /\bsudah\b/gi, replacements: ['udh', 'udaah'] },
-    { regex: /\budah\b/gi, replacements: ['udh', 'udaah'] },
-    { regex: /\bbelum\b/gi, replacements: ['blm'] },
-    { regex: /\bmakasih\b/gi, replacements: ['makasii', 'mksih', 'makasihhh'] },
-    { regex: /\bnggak\b/gi, replacements: ['ga', 'ngga'] },
-    { regex: /\btidak\b/gi, replacements: ['ga', 'ngga'] },
+  const quirks: Array<{ pattern: string; replacements: string[] }> = [
+    { pattern: '\\bkenapa\\b', replacements: ['knpa', 'kenapaaa', 'knpaa'] },
+    { pattern: '\\bgitu\\b', replacements: ['gtu', 'gituuu'] },
+    { pattern: '\\bgapapa\\b', replacements: ['gapapaaa', 'gpp', 'gapapaa'] },
+    { pattern: '\\bbanget\\b', replacements: ['bgt', 'bangettt', 'bgt deh'] },
+    { pattern: '\\biya\\b', replacements: ['iyaaa', 'iyaa'] },
+    { pattern: '\\bhalo\\b', replacements: ['halooo', 'haloo'] },
+    { pattern: '\\bseru\\b', replacements: ['seruuu', 'seruu'] },
+    { pattern: '\\blucu\\b', replacements: ['lucuuu', 'lucuu'] },
+    { pattern: '\\bcapek\\b', replacements: ['capekk', 'capekkk'] },
+    { pattern: '\\bkamu\\b', replacements: ['kmu', 'kamuu'] },
+    { pattern: '\\bsudah\\b', replacements: ['udh', 'udaah'] },
+    { pattern: '\\budah\\b', replacements: ['udh', 'udaah'] },
+    { pattern: '\\bbelum\\b', replacements: ['blm'] },
+    { pattern: '\\bmakasih\\b', replacements: ['makasii', 'mksih', 'makasihhh'] },
+    { pattern: '\\bnggak\\b', replacements: ['ga', 'ngga'] },
+    { pattern: '\\btidak\\b', replacements: ['ga', 'ngga'] },
   ];
 
   let result = text;
-  // Apply a natural subset of quirks with 60% probability per keyword
+  // Apply a natural subset of quirks with fresh RegExp instances
   for (const q of quirks) {
-    if (q.regex.test(result)) {
-      if (Math.random() < 0.6) {
-        const pick = q.replacements[Math.floor(Math.random() * q.replacements.length)];
-        result = result.replace(q.regex, pick);
-      }
+    const rx = new RegExp(q.pattern, 'i');
+    if (rx.test(result) && Math.random() < 0.5) {
+      const pick = q.replacements[Math.floor(Math.random() * q.replacements.length)];
+      result = result.replace(new RegExp(q.pattern, 'gi'), pick);
     }
   }
 
