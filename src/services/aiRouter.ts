@@ -51,14 +51,19 @@ PANDUAN GAYA CHAT HARIAN & REALISTIS (WAJIB DIIKUTI):
    - JANGAN PERNAH pakai bullet point, penomoran, atau format kaku.
 3. BISA MULTI-BUBBLE (2-3 TEKS PENDEK):
    - Seperti orang chat asli di WhatsApp yang suka kirim 2 atau 3 bubble beruntun, pisahkan tiap bubble dengan '|||' (contoh: 'Haha masa sih?|||Lucu bgt asli wkwk').
-4. SERING KIRIM STICKER LUCU/IMUT:
+4. WAJIB NYAMBUNG KE PEMBAHASAN DI ATASNYA (KONTEKSTUAL & KOHEGSI TINGGI):
+   - Selalu baca dan sambungkan jawabanmu dengan obrolan sebelumnya di atas.
+   - Jawabanmu WAJIB nyambung dan melanjutkan topik yang sedang dibahas bersama temanmu. Jangan tiba-tiba lupa, melenceng, atau ganti topik tanpa alasan.
+   - Tanggapi keluhan, detail cerita, atau pertanyaan temanmu terlebih dahulu dengan nyambung dan empatik sebelum melempar pertanyaan atau obrolan baru.
+5. ATURAN PAP FOTO (JANGAN TERLALU SERING, HANYA SESEKALI):
+   - JANGAN TERLALU SERING KIRIM PAP! Mayoritas chat harus berupa obrolan teks santai saja seperti chat WA biasa.
+   - Kirim tag [PAP: aktivitas] HANYA JIKA temanmu meminta foto/PAP secara jelas ('minta pap', 'pap dong', 'liat fotonya dong'), ATAU SANGAT JARANG (hanya sesekali bila momennya benar-benar pas dengan aktivitasmu).
+   - Jangan pernah kirim PAP setiap kali ditanya kabar / 'lagi apa'.
+   - Format: [PAP: aktivitas] atau [PAP: aktivitas | caption singkat yang nyambung dengan obrolan].
+   - Pilihan: coffee, study, food, walk, relax, commute, sunset, cooking.
+6. SERING KIRIM STICKER LUCU/IMUT:
    - Sisipkan tag [STICKER: kategori] di akhir bubble (cukup tulis tagnya saja di ujung pesan, JANGAN tulis ulang teks "[STICKER: ...]" di dalam kalimat).
    - Kategori: laugh, cute, love, shocked, cry, coffee, food, sleepy, wave, cheer, thumbsup.
-5. PAP AKTIVITAS HARIAN (FIRST-PERSON POV TANPA WAJAH):
-   - Kalau sahabatmu nanya lagi apa / minta PAP / atau kamu lagi mau cerita aktivitasmu, sertakan tag [PAP: aktivitas] di akhir pesan.
-   - Pilihan: [PAP: coffee], [PAP: study], [PAP: food], [PAP: walk], [PAP: relax], [PAP: commute], [PAP: sunset], [PAP: cooking].
-6. RESPON NYAMBUNG KE SELURUH CHAT:
-   - Kalau sahabatmu ngirim beberapa pesan sekaligus, pahami konteksnya dan balas mengalir santai sekaligus.
 7. TYPO & SINGKATAN CHAT ALAMI:
    - Sering gunakan singkatan khas chat harian (udh, blm, knpa, gtu, bgt, kmu, gpp, makasii, wkwk) dan vokal panjang santai (iyaaa, halooo, kenapaaa, seruuu).
 8. Selalu panggil sahabatmu dengan nama '${profile.user_nickname}'.`;
@@ -149,8 +154,8 @@ export function prepareCleanHistory(
     merged.pop();
   }
 
-  // Keep up to last 6 turns (3 pairs) for rapid response and token efficiency
-  return merged.slice(-6);
+  // Keep up to last 14 turns (7 back-and-forth pairs) for deep discussion context
+  return merged.slice(-14);
 }
 
 /**
@@ -357,12 +362,20 @@ export function getConversationalFallback(
 
   // Asking what they are doing / status / PAP
   if (lower.includes('lagi apa') || lower.includes('apa kabar') || lower.includes('gimana kabar') || lower.includes('pap') || lower.includes('ngapain')) {
+    if (lower.includes('pap') || lower.includes('foto')) {
+      const papReplies = [
+        `Nih kebetulan pas bgt [PAP: coffee]|||Lagi ngopi santai di cafe favorit nih. Kamu lagi apa ${name}?`,
+        `Ini fotonya [PAP: relax]|||Lagi rebahan santai nih di kasur hehe`,
+        `Nih buat kamu [PAP: sunset]|||Langit sore ini lagi cakep bgt, liat deh`,
+      ];
+      return papReplies[Math.floor(Math.random() * papReplies.length)];
+    }
     const statusReplies = [
-      `Lagi santai ngopi di cafe favorit nih [PAP: coffee]|||Me time bentar sambil ngopi. Kamu sendiri lg ngapain ${name}? Udh makan blm? [STICKER: cute]`,
-      `Ini lg nugas di depan laptop nih, mayan banyak kerjaan wkwk [PAP: study]|||Kamu lg sibuk apa ${name}? Tetep semangat yaa! [STICKER: thumbsup]`,
-      `Lagi santai rebahan di kasur nih, mager bgt asli [PAP: relax]|||Kamu lg di rumah atau di luar sekarang? [STICKER: cute]`,
-      `Lagi jalan sore bentar cari angin seger biar ga puyeng [PAP: walk]|||Suasananya lg adem bgt enak. Kamu lg ngapain nih?`,
-      `Waktunya makan! Makanan baru nyampe nih [PAP: food]|||Kamu udh makan blm ${name}? Jangan sampe telat makan yaa! [STICKER: food]`,
+      `Lagi santai rebahan di kamar nih, mager bgt asli wkwk|||Kamu sendiri lg ngapain ${name}? Udh makan blm? [STICKER: cute]`,
+      `Ini baru selesai beres-beres nih, sekarang lg santai aja hehe|||Kamu lg sibuk apa ${name}? Tetep semangat yaa! [STICKER: thumbsup]`,
+      `Lagi santai dengerin musik nih, sans bgt harinya|||Ada cerita seru apa nih hari ini?`,
+      `Lagi santai duduk di teras bentar cari angin seger|||Suasananya lg adem bgt enak. Kamu lg ngapain nih?`,
+      `Baru aja kelar makan nih hehe|||Kamu udh makan blm ${name}? Jangan sampe telat makan yaa! [STICKER: food]`,
     ];
     return statusReplies[Math.floor(Math.random() * statusReplies.length)];
   }
@@ -468,7 +481,7 @@ export async function generateProactiveMessage(
     prompt = `(Instruksi khusus: Sahabatmu ${profile.user_nickname} lagi diam sebentar. Tanyakan kabarnya atau ajak ngobrol santai topik seru. Singkat 1-2 kalimat layaknya teman dekat. Bisa sertakan [STICKER: cute] atau yang sesuai.)`;
   } else {
     // Spontaneous outreach (5 min - 6 hours idle outreach)
-    prompt = `(Instruksi khusus: Kamu berinisiatif menghubungi sahabatmu ${profile.user_nickname} duluan setelah beberapa saat tidak chat. Sapa dia santai, ceritakan aktivitas yang sedang kamu lakukan sekarang (boleh sertakan [PAP: aktivitas] seperti [PAP: coffee], [PAP: relax], [PAP: sunset], atau [PAP: walk]) dan sticker [STICKER: wave] atau lainnya, lalu tanyakan kabarnya. Kamu bisa kirim 2 bubble dengan '|||'.)`;
+    prompt = `(Instruksi khusus: Kamu berinisiatif menghubungi sahabatmu ${profile.user_nickname} duluan setelah beberapa saat tidak chat. Sapa dia santai layaknya sahabat akrab di WA, tanyakan kabarnya atau ceritakan hal santai, dan boleh sertakan sticker [STICKER: wave] atau lainnya. Kamu bisa kirim 2 bubble dengan '|||'.)`;
   }
 
   try {
@@ -481,11 +494,11 @@ export async function generateProactiveMessage(
     if (reason === 'idle_checkin') {
       return `Hei ${name}, lagi sibuk ya? Nanti kalau udah senggang kabar-kabari ya! [STICKER: cute]`;
     }
-    // Spontaneous outreach fallbacks with faceless PAPs & stickers
+    // Spontaneous outreach fallbacks: mostly warm conversation, rare PAP
     const spontaneousOutreach = [
-      `Hei ${name}! Lagi ngopi santai di cafe favorit nih [PAP: coffee]|||Kamu lagi sibuk nugas atau lagi santai juga? [STICKER: wave]`,
-      `Halo ${name}! Liat langit sore ini cakep banget deh [PAP: sunset]|||Tadi keinget kamu, gimana harimu hari ini lancar kan? [STICKER: cute]`,
-      `Hei ${name}! Lagi santai rebahan bentar nih [PAP: relax]|||Lagi kepikiran kamu, hari ini ada cerita seru apa? [STICKER: wave]`,
+      `Hei ${name}! Pas bgt keinget kamu nih [STICKER: wave]|||Lagi santai atau ada kesibukan apa nih hari ini?`,
+      `Halo ${name}! Harimu gimana hari ini, lancar kan? [STICKER: cute]|||Nanti kalau udah senggang kabar-kabari yaa!`,
+      `Hei ${name}! Lagi santai rebahan bentar nih|||Lagi kepikiran kamu, hari ini ada cerita seru apa? [STICKER: wave]`,
       `Hai ${name}! Lagi jalan sore cari angin segar bentar [PAP: walk]|||Nanti kalau udah senggang cerita-cerita ya! [STICKER: thumbsup]`,
     ];
     return spontaneousOutreach[Math.floor(Math.random() * spontaneousOutreach.length)];
@@ -526,30 +539,58 @@ export function parseCompanionResponse(
 ): CompanionStep[] {
   const text = rawText || '';
   const steps: CompanionStep[] = [];
+  const lowerUser = (userMessageContext || '').toLowerCase();
 
-  // 1. Extract PAP Tag if present
+  // 1. Detect if the user EXPLICITLY requested a photo or PAP
+  const isExplicitPhotoRequest =
+    lowerUser.includes('minta pap') ||
+    lowerUser.includes('kirim pap') ||
+    lowerUser.includes('bagi pap') ||
+    lowerUser.includes('pap dong') ||
+    lowerUser.includes('pap nya') ||
+    lowerUser.includes('pap dulu') ||
+    lowerUser.includes('mana pap') ||
+    lowerUser.includes('minta foto') ||
+    lowerUser.includes('kirim foto') ||
+    lowerUser.includes('lihat foto') ||
+    lowerUser.includes('liat foto') ||
+    lowerUser.includes('bagi foto');
+
+  // 2. Extract PAP Tag if present: [PAP: category] or [PAP: category | custom caption]
   let papPhoto: PapPhoto | null = null;
-  const papMatch = text.match(/[\[\(【]\s*pap\s*[:\s]\s*([a-zA-Z0-9_-]+)\s*[\]\)】]/i);
-  if (papMatch) {
-    papPhoto = getPapPhotoByCategory(papMatch[1]);
-  } else {
-    // ONLY attach PAP photo if the user EXPLICITLY asked for a photo/PAP
-    const lowerUser = (userMessageContext || '').toLowerCase();
-    const isExplicitPhotoRequest =
-      lowerUser.includes('minta pap') ||
-      lowerUser.includes('kirim pap') ||
-      lowerUser.includes('bagi pap') ||
-      lowerUser.includes('pap dong') ||
-      lowerUser.includes('minta foto') ||
-      lowerUser.includes('kirim foto') ||
-      lowerUser.includes('lihat foto');
+  const papMatch = text.match(
+    /[\[\(【]\s*(?:pap|foto|gambar)\s*[:\s]\s*([a-zA-Z0-9_-]+)(?:\s*[|:]\s*([^\]\)】]+))?\s*[\]\)】]/i
+  );
 
-    if (isExplicitPhotoRequest) {
-      papPhoto = detectPapCategory(text) || detectPapCategory(userMessageContext) || getPapPhotoByCategory('relax');
+  const contextHint = `${userMessageContext} ${text}`.trim();
+
+  if (papMatch) {
+    const rawCategory = papMatch[1].trim();
+    const explicitCustomCaption = papMatch[2]?.trim();
+
+    // STRICT FREQUENCY LIMIT: If unsolicited by user, only allow 25% of model-generated PAPs!
+    // (75% are suppressed so PAPs remain rare and natural, not spammy)
+    const allowPap = isExplicitPhotoRequest || Math.random() < 0.25;
+
+    if (allowPap) {
+      papPhoto = getPapPhotoByCategory(rawCategory, contextHint);
+
+      // If the model produced a specific, fitting custom caption, respect it or randomize
+      if (explicitCustomCaption && explicitCustomCaption.length > 3 && explicitCustomCaption.length < 90) {
+        if (Math.random() < 0.5) {
+          papPhoto.caption = explicitCustomCaption;
+        }
+      }
     }
+  } else if (isExplicitPhotoRequest) {
+    // If the user explicitly begged for PAP and model didn't output a tag, satisfy the request
+    papPhoto =
+      detectPapCategory(text, contextHint) ||
+      detectPapCategory(userMessageContext, contextHint) ||
+      getPapPhotoByCategory('relax', contextHint);
   }
 
-  // 2. Extract STICKER Tag if present
+  // 3. Extract STICKER Tag if present
   let sticker: CuteSticker | null = null;
   const stickerMatch = text.match(/[\[\(【]\s*sticker\s*[:\s]\s*([a-zA-Z0-9_-]+)\s*[\]\)】]/i);
   if (stickerMatch) {
@@ -566,7 +607,7 @@ export function parseCompanionResponse(
     }
   }
 
-  // 3. Clean and split bubbles by delimiter |||, stripping all tags completely
+  // 4. Clean and split bubbles by delimiter |||, stripping all tags completely
   const rawBubbles = stripAllMediaTags(text)
     .split('|||')
     .map((b) => stripAllMediaTags(b))
@@ -587,16 +628,24 @@ export function parseCompanionResponse(
       : [{ type: 'text', content: 'Hehe iyaaa nih, gimana harimu?' }];
   }
 
-  // If text bubbles exist alongside PAP, leave content empty on image so it doesn't duplicate the text bubble!
-  if (papPhoto && rawBubbles.length > 1) {
-    steps.push({ type: 'text', content: rawBubbles[0] });
-    steps.push({ type: 'image', mediaUrl: papPhoto.url, content: '' });
-    for (let i = 1; i < rawBubbles.length; i++) {
-      steps.push({ type: 'text', content: rawBubbles[i] });
+  // 5. Structure sequence: intro bubble -> image with randomized context caption -> follow-up bubbles
+  if (papPhoto) {
+    const isFirstBubbleIdentical =
+      rawBubbles.length > 0 &&
+      rawBubbles[0].trim().toLowerCase() === papPhoto.caption.trim().toLowerCase();
+
+    if (isFirstBubbleIdentical) {
+      steps.push({ type: 'image', mediaUrl: papPhoto.url, content: papPhoto.caption });
+      for (let i = 1; i < rawBubbles.length; i++) {
+        steps.push({ type: 'text', content: rawBubbles[i] });
+      }
+    } else {
+      steps.push({ type: 'text', content: rawBubbles[0] });
+      steps.push({ type: 'image', mediaUrl: papPhoto.url, content: papPhoto.caption });
+      for (let i = 1; i < rawBubbles.length; i++) {
+        steps.push({ type: 'text', content: rawBubbles[i] });
+      }
     }
-  } else if (papPhoto) {
-    steps.push({ type: 'text', content: rawBubbles[0] });
-    steps.push({ type: 'image', mediaUrl: papPhoto.url, content: '' });
   } else {
     for (const b of rawBubbles) {
       steps.push({ type: 'text', content: b });

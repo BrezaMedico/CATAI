@@ -141,9 +141,246 @@ export const PAP_PHOTOS: PapPhoto[] = [
 ];
 
 /**
- * Get a PAP photo by category with compressed URL
+ * Varied, natural, colloquial Indonesian photo captions tailored to each activity category
  */
-export function getPapPhotoByCategory(category: string): PapPhoto {
+export const CATEGORY_CAPTIONS: Record<string, string[]> = {
+  coffee: [
+    'Kopi dulu biar ga puyeng wkwk',
+    'Me time bentar sambil ngopi santai',
+    'Secangkir latte penolong hari ini hehe',
+    'Vibes cafenya lagi asik bgt nih',
+    'Ngopi tipis-tipis biar harinya tetep melek',
+    'Cafe langganan emang paling bener suasananya',
+    'Santai sejenak sambil ngopi enak bgt',
+    'Kopi hangat penenang pikiran hari ini',
+  ],
+  study: [
+    'Lagi nugas bentar nih di depan laptop wkwk',
+    'Ditemani laptop seharian, tetep semangaatt',
+    'Beresin beberapa deadline kerjaan dulu yaa',
+    'Lagi fokus nyelesein catatan penting nih',
+    'Meja kerja hari ini lumayan sibuk haha',
+    'Ngerjain tugas dulu biar cepet beres',
+    'Sedikit progres hari ini di depan laptop',
+  ],
+  food: [
+    'Waktunya makan! Akhirnya makanan nyampe',
+    'Makan enak dulu biar ga oleng wkwk',
+    'Nyam! Aromanya enak bgt parah ga tahan',
+    'Laper bgt dari tadi, mari makan!',
+    'Menu hari ini mantep sih ga boong',
+    'Makan dulu yaa, kamu jangan lupa makan juga!',
+    'Porsi kenyang buat isi tenaga hari ini hehe',
+  ],
+  walk: [
+    'Jalan sore bentar cari angin seger',
+    'Keluar bentar biar pikiran ga suntuk hehe',
+    'Suasana di luar lagi teduh bgt enak',
+    'Cari udara luar dulu, adem bgt harinya',
+    'Jalan-jalan santai bentar hilangkan penat',
+    'Enak bgt udaranya sore ini, adem',
+  ],
+  relax: [
+    'Rebahan di kasur, mager bgt asli wkwk',
+    'Udah paling bener santai di kamar',
+    'Kasur emang tempat terbaik setelah seharian aktivitas',
+    'Me time santai di kasur sambil leha-leha',
+    'Rebahan sejenak biar badan enakan hehe',
+    'Mager mode on, kasur memanggil wkwk',
+  ],
+  commute: [
+    'Lagi di jalan nih, jalanan agak padat',
+    'Otw pulang, lumayan macet tapi santai aja',
+    'Lagi di perjalanan, semoga cepet nyampe hehe',
+    'Di jalan nih, bentar lagi nyampe kok',
+    'Perjalanan pulang, ditemani lalu lintas sore',
+  ],
+  sunset: [
+    'Liat langit sore ini, warnanya cakep parah',
+    'Sunset sore ini adem bgt diliatnya',
+    'Langitnya lagi estetik bgt ga boong',
+    'Pemandangan langit sore bikin hati tenang',
+    'Cakep bgt ya langitnya sore ini',
+  ],
+  cooking: [
+    'Lagi eksperimen masak sesuatu di dapur nih hehe',
+    'Bikin camilan bentar di dapur',
+    'Masak ala-ala dulu biar hemat wkwk',
+    'Lagi bikin yang anget-anget di dapur',
+    'Uji coba resep baru di dapur hari ini',
+  ],
+};
+
+/**
+ * Generates a randomized, authentic Indonesian caption matching the ongoing conversation topic
+ */
+export function getRandomPapCaption(category: string, contextHint = ''): string {
+  const norm = category.toLowerCase().trim();
+  const lowerContext = contextHint.toLowerCase();
+
+  // Contextual matching if hints are present in discussion
+  if (norm === 'coffee') {
+    if (lowerContext.includes('pusing') || lowerContext.includes('mumet') || lowerContext.includes('capek') || lowerContext.includes('lelah')) {
+      const picks = [
+        'Kopi dulu biar pikiran ga puyeng wkwk',
+        'Butuh asupan kafein biar capeknya berkurang hehe',
+        'Kopi penolong pas kepala lagi mumet bgt',
+        'Secangkir kopi hangat biar agak tenang nih pikirannya',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('hujan') || lowerContext.includes('dingin') || lowerContext.includes('adem')) {
+      const picks = [
+        'Kopi hangat pas bgt nih nemenin hawa dingin',
+        'Hawa dingin gini emang paling pas megang cangkir anget',
+        'Lagi adem bgt suasananya, ditemani kopi panas hehe',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('ngantuk') || lowerContext.includes('melek') || lowerContext.includes('tidur')) {
+      const picks = [
+        'Kopi penolong biar ga ketiduran wkwk',
+        'Butuh dorongan kafein biar matanya melek lagi',
+        'Kopi dulu biar ga oleng wkwk',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+  }
+
+  if (norm === 'food') {
+    if (lowerContext.includes('laper') || lowerContext.includes('lapar') || lowerContext.includes('kelaparan')) {
+      const picks = [
+        'Makanan penolong pas lagi laper-lapernya wkwk',
+        'Akhirnya makan juga setelah perut keroncongan haha',
+        'Menu penyelamat perut laper hari ini',
+        'Gak kuat nahan laper, mari makan dulu!',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('hujan') || lowerContext.includes('dingin')) {
+      const picks = [
+        'Makan anget-anget pas bgt hawanya dingin',
+        'Kuah anget paling juara pas cuaca lagi adem gini',
+        'Anget-anget gini pas bgt dinikmatin santai',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('siang') || lowerContext.includes('lunch')) {
+      const picks = [
+        'Makan siang dulu biar tetep bertenaga!',
+        'Menu makan siang hari ini mantep bgt hehe',
+        'Isi amunisi siang dulu biar ga lemes',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('malam') || lowerContext.includes('dinner')) {
+      const picks = [
+        'Makan malam santai dulu nih',
+        'Menu dinner penutup hari yang melelahkan hehe',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+  }
+
+  if (norm === 'relax') {
+    if (lowerContext.includes('capek') || lowerContext.includes('lelah') || lowerContext.includes('pegel') || lowerContext.includes('pusing')) {
+      const picks = [
+        'Rebahan dulu bentar biar capeknya luntur hehe',
+        'Kasur emang tempat paling juara pas badan pegel wkwk',
+        'Istirahat sejenak meluruskan badan setelah seharian',
+        'Rebahan bentar, rasanya nikmat bgt pas capek gini',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('mager') || lowerContext.includes('malas')) {
+      const picks = [
+        'Mager mode on, kasur emang paling juara wkwk',
+        'Santai sejenak di kamar, adem bgt suasananya',
+        'Lagi menikmati rebahan santai tanpa beban hehe',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+  }
+
+  if (norm === 'study') {
+    if (lowerContext.includes('deadline') || lowerContext.includes('tugas') || lowerContext.includes('kerja') || lowerContext.includes('skripsi')) {
+      const picks = [
+        'Ditemani laptop seharian, beresin deadline dulu yaa',
+        'Kejar deadline dikit lagi biar tenang wkwk',
+        'Fokus di depan laptop dulu bentar, semangat!',
+        'Nugas tipis-tipis biar ga numpuk besok',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+  }
+
+  if (norm === 'walk') {
+    if (lowerContext.includes('sore') || lowerContext.includes('senja')) {
+      const picks = [
+        'Jalan sore bentar cari angin seger biar adem',
+        'Suasana sore di luar lagi teduh bgt',
+        'Jalan santai bentar sambil ngeliat langit sore',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('suntuk') || lowerContext.includes('bosan') || lowerContext.includes('mumet')) {
+      const picks = [
+        'Keluar bentar biar pikiran ga suntuk hehe',
+        'Cari angin di luar, segerr bgt suasananya',
+        'Jalan santai bentar hilangkan penat',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+  }
+
+  if (norm === 'commute') {
+    if (lowerContext.includes('pulang') || lowerContext.includes('balik')) {
+      const picks = [
+        'Otw perjalanan pulang nih, lumayan padat tapi sans aja',
+        'Perjalanan pulang nih, santai aja nikmatin jalanan',
+        'Lagi di jalan balik ke rumah hehe',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+    if (lowerContext.includes('macet') || lowerContext.includes('padat')) {
+      const picks = [
+        'Jalanan lumayan ramai, dinikmatin aja sambil denger lagu',
+        'Macet dikit tapi gapapa sambil santai',
+      ];
+      return picks[Math.floor(Math.random() * picks.length)];
+    }
+  }
+
+  if (norm === 'sunset') {
+    const picks = [
+      'Liat langit sore ini, warnanya cakep parah',
+      'Sunset sore ini bikin hati adem bgt',
+      'Langitnya lagi estetik bgt sore ini, liat deh',
+      'Pemandangan langit sore favorit nih',
+      'Cakep bgt ya langitnya sore ini',
+    ];
+    return picks[Math.floor(Math.random() * picks.length)];
+  }
+
+  if (norm === 'cooking') {
+    const picks = [
+      'Lagi eksperimen masak sesuatu di dapur nih hehe',
+      'Bikin camilan bentar di dapur biar ga gabut',
+      'Masak sendiri dulu, semoga rasanya pas wkwk',
+      'Aroma masakannya udah wangi bgt nih di dapur',
+    ];
+    return picks[Math.floor(Math.random() * picks.length)];
+  }
+
+  // Random pick from authentic captions for this category
+  const list = CATEGORY_CAPTIONS[norm] || CATEGORY_CAPTIONS['relax'];
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+/**
+ * Get a PAP photo by category with compressed URL and randomized contextual caption
+ */
+export function getPapPhotoByCategory(category: string, contextHint = ''): PapPhoto {
   const norm = category.toLowerCase().trim();
   const matched = PAP_PHOTOS.filter((p) => p.category === norm);
   const picked = matched.length > 0
@@ -153,45 +390,46 @@ export function getPapPhotoByCategory(category: string): PapPhoto {
   return {
     ...picked,
     url: optimizeImageUrl(picked.url),
+    caption: getRandomPapCaption(norm, contextHint),
   };
 }
 
 /**
  * Detect activity from text to find matching PAP photo
  */
-export function detectPapCategory(text: string): PapPhoto | null {
+export function detectPapCategory(text: string, contextHint = ''): PapPhoto | null {
   const lower = text.toLowerCase();
 
   if (lower.includes('kopi') || lower.includes('ngopi') || lower.includes('cafe')) {
-    return getPapPhotoByCategory('coffee');
+    return getPapPhotoByCategory('coffee', contextHint);
   }
   if (lower.includes('nugas') || lower.includes('belajar') || lower.includes('laptop') || lower.includes('kerja') || lower.includes('kerjaan')) {
-    return getPapPhotoByCategory('study');
+    return getPapPhotoByCategory('study', contextHint);
   }
   if (lower.includes('makan') || lower.includes('kuliner') || lower.includes('sarapan') || lower.includes('lunch') || lower.includes('dinner')) {
-    return getPapPhotoByCategory('food');
+    return getPapPhotoByCategory('food', contextHint);
   }
   if (lower.includes('jalan') || lower.includes('keluar') || lower.includes('taman')) {
-    return getPapPhotoByCategory('walk');
+    return getPapPhotoByCategory('walk', contextHint);
   }
   if (lower.includes('rebahan') || lower.includes('santai') || lower.includes('kasur') || lower.includes('buku')) {
-    return getPapPhotoByCategory('relax');
+    return getPapPhotoByCategory('relax', contextHint);
   }
   if (lower.includes('macet') || lower.includes('perjalanan') || lower.includes('pulang') || lower.includes('motor') || lower.includes('mobil')) {
-    return getPapPhotoByCategory('commute');
+    return getPapPhotoByCategory('commute', contextHint);
   }
   if (lower.includes('sunset') || lower.includes('langit') || lower.includes('sore')) {
-    return getPapPhotoByCategory('sunset');
+    return getPapPhotoByCategory('sunset', contextHint);
   }
   if (lower.includes('masak') || lower.includes('dapur')) {
-    return getPapPhotoByCategory('cooking');
+    return getPapPhotoByCategory('cooking', contextHint);
   }
 
-  // If user asks for "pap" or "lagi apa" in general
-  if (lower.includes('pap') || lower.includes('lagi apa') || lower.includes('lagi ngapain')) {
+  // If user asks for "pap" in general, pick a popular category
+  if (lower.includes('pap') || lower.includes('foto')) {
     const popular: Array<'coffee' | 'study' | 'relax' | 'food' | 'sunset'> = ['coffee', 'study', 'relax', 'food', 'sunset'];
     const pick = popular[Math.floor(Math.random() * popular.length)];
-    return getPapPhotoByCategory(pick);
+    return getPapPhotoByCategory(pick, contextHint);
   }
 
   return null;
