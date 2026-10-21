@@ -2,19 +2,27 @@ import { ChatMessage, CompanionProfile } from '../types';
 import { CuteSticker, getStickerByCategory, detectStickerCategory } from '../utils/stickers';
 import { PapPhoto, getPapPhotoByCategory, detectPapCategory } from '../utils/papPhotos';
 
-// Load API keys from environment variables with zero hardcoded secret strings
-const GEMINI_KEYS = [
-  (import.meta.env.VITE_GEMINI_KEY_1 as string) || '',
-  (import.meta.env.VITE_GEMINI_KEY_2 as string) || '',
-].filter(Boolean);
+// Dynamic API key loader supporting VITE_GEMINI_KEY_1..10 and VITE_OPENAI_KEY_1..10
+function loadKeys(prefix: string): string[] {
+  const keys: string[] = [];
+  for (let i = 1; i <= 10; i++) {
+    const val = (import.meta.env[`${prefix}_${i}`] as string) || '';
+    if (val && val.trim() && !keys.includes(val.trim())) {
+      keys.push(val.trim());
+    }
+  }
+  const fallback = (import.meta.env[prefix] as string) || (import.meta.env[`${prefix}_API_KEY`] as string) || '';
+  if (fallback && fallback.trim() && !keys.includes(fallback.trim())) {
+    keys.unshift(fallback.trim());
+  }
+  return keys;
+}
 
-const OPENAI_KEYS = [
-  (import.meta.env.VITE_OPENAI_KEY_1 as string) || '',
-  (import.meta.env.VITE_OPENAI_KEY_2 as string) || '',
-].filter(Boolean);
+const GEMINI_KEYS = loadKeys('VITE_GEMINI_KEY');
+const OPENAI_KEYS = loadKeys('VITE_OPENAI_KEY');
 
-const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown tracker
-const REQUEST_TIMEOUT_MS = 12000; // 12 seconds timeout per attempt
+const COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes cooldown tracker for exhausted keys
+const REQUEST_TIMEOUT_MS = 8000; // 8 seconds timeout per attempt for rapid failover
 
 // In-memory cooldown tracker: { keyIdentifier: timestampUntil }
 const cooldownMap = new Map<string, number>();
@@ -230,8 +238,15 @@ async function callGemini(
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.warn(`[Gemini] ${modelName} returned HTTP ${response.status}: ${errorText.slice(0, 100)}, trying next model...`);
+        console.warn(`[Gemini] ${modelName} returned HTTP ${response.status}: ${errorText.slice(0, 100)}`);
         lastError = new Error(`Gemini ${modelName} HTTP ${response.status}: ${errorText}`);
+
+        // If this key has exhausted its quota (429) or is forbidden/invalid (403/400),
+        // immediately throw so router fails over to the NEXT key without delay!
+        if (response.status === 429 || response.status === 403 || response.status === 400) {
+          throw lastError;
+        }
+
         continue;
       }
 
@@ -499,22 +514,31 @@ export async function sendChatMessageToCompanion(
     if (key) targets.push({ type: 'openai', key, id: `openai_${i + 1}`, name: `OpenAI Key ${i + 1}` });
   });
 
-  // Iterate in priority order
-  for (const target of targets) {
-    if (isKeyCoolingDown(target.id)) {
-      continue;
-    }
+  // Filter out cooling down targets
+  let availableTargets = targets.filter((t) => !isKeyCoolingDown(t.id));
 
+  // If ALL targets are marked as cooling down, force-reset the first target so we try it again instead of giving up!
+  if (availableTargets.length === 0 && targets.length > 0) {
+    cooldownMap.delete(targets[0].id);
+    availableTargets = [targets[0]];
+  }
+
+  // Iterate in priority order: Key 1 -> Key 2 -> Key 3 -> Key 4...
+  for (const target of availableTargets) {
     try {
       if (target.type === 'gemini') {
-        return await callGemini(target.key, systemPrompt, history, newMessage, imageBase64);
+        const reply = await callGemini(target.key, systemPrompt, history, newMessage, imageBase64);
+        if (reply) return reply;
       } else {
-        return await callOpenAI(target.key, systemPrompt, history, newMessage, imageBase64);
+        const reply = await callOpenAI(target.key, systemPrompt, history, newMessage, imageBase64);
+        if (reply) return reply;
       }
     } catch (err) {
-      console.warn(`[Failover] ${target.name} failed:`, err);
+      console.warn(
+        `[Failover] ${target.name} failed (${err instanceof Error ? err.message : String(err)}). Immediately switching to next API key...`
+      );
       markKeyFailed(target.id);
-      // Failover directly to next provider
+      // Loop continues immediately to next target in line!
     }
   }
 
